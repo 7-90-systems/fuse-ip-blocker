@@ -100,8 +100,10 @@
                 $wpdb->insert ($wpdb->prefix.'fuseip_logs', array (
                     'ip' => $db_ip,
                     'hit_time' => current_time ('mysql'),
+                    'hit_url' => $_SERVER ['REQUEST_URI'],
                     'remote_ip' => $ip
                 ), array (
+                    '%s',
                     '%s',
                     '%s',
                     '%s'

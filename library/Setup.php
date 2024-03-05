@@ -304,12 +304,14 @@
                             <tr>
                                 <th><?php _e ('Remote IP blocked', 'fuseip'); ?></th>
                                 <th><?php _e ('Block time', 'fuseip'); ?></th>
+                                <th><?php _e ('Request URI', 'fuseip'); ?></th>
                             </tr>
                         <thead>
                         <tfoot>
                             <tr>
                                 <th><?php _e ('Remote IP blocked', 'fuseip'); ?></th>
                                 <th><?php _e ('Block time', 'fuseip'); ?></th>
+                                <th><?php _e ('Request URI', 'fuseip'); ?></th>
                             </tr>
                         <tfoot>
                         <tbody>
@@ -320,6 +322,7 @@
                                     <tr>
                                         <td><?php echo $row->remote_ip; ?></td>
                                         <td><?php echo date ('g:s:ia j/n/Y', strtotime ($row->hit_time)); ?></td>
+                                        <td><?php echo $row->hit_url; ?></td>
                                     </tr>
                                 
                                 <?php endforeach; ?>

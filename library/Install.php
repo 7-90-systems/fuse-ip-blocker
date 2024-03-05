@@ -38,10 +38,11 @@
                 `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
                 `ip` varchar(255) NOT NULL,
                 `hit_time` datetime NOT NULL,
+                `hit_url` TEXT NOT NULL DEFAULT '',
                 `remote_ip` varchar(255) NOT NULL,
                 PRIMARY KEY (`id`),
-                INDEX(`ip`),
-                INDEX(`hit_time`, `remote_ip`)
+                KEY `ip` (`ip`),
+                KEY `hit_time_remote_ip` (`hit_time`,`remote_ip`)
             ) ".$wpdb->get_charset_collate ().";";
             dbDelta ($sql);
         } // installDatabase ()
