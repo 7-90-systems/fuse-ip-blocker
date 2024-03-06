@@ -321,7 +321,7 @@
                                 
                                     <tr>
                                         <td><?php echo $row->remote_ip; ?></td>
-                                        <td><?php echo date ('g:s:ia j/n/Y', strtotime ($row->hit_time)); ?></td>
+                                        <td><?php echo date ('g:i:sa j/n/Y', strtotime ($row->hit_time)); ?></td>
                                         <td><?php echo $row->hit_url; ?></td>
                                     </tr>
                                 
