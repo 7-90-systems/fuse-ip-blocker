@@ -35,7 +35,7 @@
          *  Set up the administration menu.
          */
         public function adminMenu () {
-            add_management_page (__ ('IP Blocker', 'fuseip'), __ ('IP Blocker', 'fuseip'), 'manage_options', 'ipblocker', array ($this, 'blockListPage'));
+            add_submenu_page ('fusesettings', __ ('IP Blocker', 'fuseip'), __ ('IP Blocker', 'fuseip'), 'manage_options', 'ipblocker', array ($this, 'blockListPage'));
         } // adminMenu ()
         
         
