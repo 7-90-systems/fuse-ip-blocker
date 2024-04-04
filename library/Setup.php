@@ -177,7 +177,7 @@
                 } // else
             } // if ()
             else {
-                $response ['message'] = __ ('An invalid IP address has bene entered.', 'fuseip');
+                $response ['message'] = __ ('An invalid IP address has been entered.', 'fuseip');
             } // else
             
             echo json_encode ($response);
