@@ -399,17 +399,17 @@
                                     <td>
                                         <?php
                                             $date = $row->last_blocked;
+                                            $now = new \DateTime (current_time ('mysql'));
                                             
                                             if (empty ($date) || $date == '0000-00-00 00:00:00') {
-                                                $now = new \DateTime (current_time ('mysql'));
                                                 $added = new \DateTime ($row->date_added);
                                                 $diff = $now->diff ($added);
                                                 $days = $diff->format ('%a');
                                                 
-                                                if ($days > 60) {
+                                                if ($days > 30) {
                                                     $cls = 'admin-red admin-bold';
                                                 } // if ()
-                                                elseif ($days > 30) {
+                                                elseif ($days > 15) {
                                                     $cls = 'admin-blue admin-italic';
                                                 } // elseif ()
                                                 else {
@@ -419,7 +419,21 @@
                                                 echo '<span class="'.$cls.'">'.sprintf (__ ('No blocks recorded in %d days', 'fuseip'), $days).'</span>';
                                             } // if ()
                                             else {
-                                                echo date ('g:i:sa j/n/Y', strtotime ($row->last_blocked));
+                                                $last_blocked = new \DateTime ($row->last_blocked);
+                                                $diff = $now->diff ($last_blocked);
+                                                $days = $diff->format ('%a');
+                                                
+                                                if ($days > 60) {
+                                                    $cls = 'admin-red admin-bold';
+                                                } // if ()
+                                                elseif ($days > 30) {
+                                                    $cls = 'admin-blue admin-bold';
+                                                } // elseif ()
+                                                else {
+                                                    $cls = 'admin-bold';
+                                                } // else
+                                                
+                                                echo '<span class="'.$cls.'">'.date ('g:i:sa j/n/Y', strtotime ($row->last_blocked)).'</span>';
                                             } // else
                                         ?>
                                     </td>
