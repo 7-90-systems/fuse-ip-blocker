@@ -157,6 +157,7 @@
                 if (count ($wpdb->get_results ($query)) == 0) {
                     $wpdb->insert ($wpdb->prefix.'fuseip_blocks', array (
                         'ip' => $ip,
+                        'date_added' => current_time ('mysql'),
                         'last_blocked' => '0000-00-00 00:00:00',
                         'block_count' => 0
                     ),
@@ -358,6 +359,7 @@
             
             $query = "SELECT
                 block.ip AS ip,
+                block.date_added AS date_added,
                 block.last_blocked AS last_blocked,
                 block.block_count AS block_count
             FROM ".$wpdb->prefix."fuseip_blocks AS block
@@ -398,8 +400,23 @@
                                         <?php
                                             $date = $row->last_blocked;
                                             
-                                            if ($date == '0000-00-00 00:00:00') {
-                                                echo '<span class="admin-light admin-italic">'.__ ('No blocks recorded', 'fuseip').'</span>';
+                                            if (empty ($date) || $date == '0000-00-00 00:00:00') {
+                                                $now = new \DateTime (current_time ('mysql'));
+                                                $added = new \DateTime ($row->date_added);
+                                                $diff = $now->diff ($added);
+                                                $days = $diff->format ('%a');
+                                                
+                                                if ($days > 60) {
+                                                    $cls = 'admin-red admin-bold';
+                                                } // if ()
+                                                elseif ($days > 30) {
+                                                    $cls = 'admin-blue admin-italic';
+                                                } // elseif ()
+                                                else {
+                                                    $cls = 'admin-light admin-italic';
+                                                } // else
+                                                
+                                                echo '<span class="'.$cls.'">'.sprintf (__ ('No blocks recorded in %d days', 'fuseip'), $days).'</span>';
                                             } // if ()
                                             else {
                                                 echo date ('g:i:sa j/n/Y', strtotime ($row->last_blocked));

@@ -27,6 +27,7 @@
             // Create our blocked IP database table
             $sql = "CREATE TABLE `".$wpdb->prefix."fuseip_blocks` (
                 `ip` varchar(255) NOT NULL,
+                `date_added` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 `last_blocked` datetime NOT NULL,
                 `block_count` bigint UNSIGNED NOT NULL DEFAULT '0',
                 PRIMARY KEY (`ip`)
