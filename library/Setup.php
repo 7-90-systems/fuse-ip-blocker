@@ -392,7 +392,7 @@
                                 
                                 <tr>
                                     <td>
-                                        <a href="<?php echo esc_url (admin_url ('tools.php?page=ipblocker&section=logs&ip='.urlencode ($row->ip))); ?>">
+                                        <a href="<?php echo esc_url (admin_url ('admin.php?page=ipblocker&section=logs&ip='.urlencode ($row->ip))); ?>">
                                             <?php echo $row->ip; ?>
                                         </a>
                                     </td>
