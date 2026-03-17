@@ -32,12 +32,17 @@
     
     
     
-    /**
-     *  This is only useful in the admin area, so don't load unless we are in admin.
-     */
-    if (is_admin ()) {
-        $fuse_ipblocker_setup = Setup::getInstance ();
-    } // if ()
+    add_action ('fuse_init', '\Fuse\Plugin\IpBlocker\fuse_ip_blocker_setup');
+    
+    // Set up.
+    function fuse_ip_blocker_setup () {
+        /**
+         *  This is only useful in the admin area, so don't load unless we are in admin.
+         */
+        if (is_admin ()) {
+            $fuse_ipblocker_setup = Setup::getInstance ();
+        } // if ()
+    } // fuse_ip_blocker_setup ()
     
     
     
