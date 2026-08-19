@@ -68,6 +68,27 @@ A complete IPv6 address is normalised to the short form PHP reports in `REMOTE_A
 so pasting the fully expanded `2001:0db8:85a3:0000:0000:8a2e:0370:7334` works and is
 stored as `2001:db8:85a3::8a2e:370:7334`.
 
+## Block status levels
+
+Each row in the block list is described and coloured by how long it has been since that
+block last stopped a request. A block that has just fired is a live problem; one that
+has not fired in months probably is not, and is a candidate for removal. A block that
+has never fired is measured from the day it was added instead.
+
+| Level | Applies when | Shown as | Default |
+| --- | --- | --- | --- |
+| New | up to the *New* day count | bold red | 15 days |
+| Mature | up to the *Mature* day count | red | 30 days |
+| Good | up to the *Good* day count | green | 60 days |
+| Clear | anything older | bold green | — |
+
+The three day counts are set under **Fuse CMS → Site Settings**, in the **IP Blocker**
+panel. They have to climb, so if they are set out of order each one is held at or above
+the one below it rather than the list being allowed to go strange.
+
+Developers can change the labels and CSS classes with the
+`fuse_ipblocker_status_levels` filter.
+
 ## The block message
 
 Set the `fuse_ipblocker_blockmessage` option to change what a blocked visitor sees.

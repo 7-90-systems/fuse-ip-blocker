@@ -30,6 +30,9 @@
         protected function _init () {
             // Set up the administration areas.
             add_action ('admin_menu', array ($this, 'adminMenu'));
+
+            // Add our settings to the Fuse settings screen.
+            add_filter ('fuse_settings_form_panels', array ('\Fuse\Plugin\IpBlocker\BlockStatus', 'addSettingsPanel'));
             
             // Add our AJAX functions
             add_action ('wp_ajax_fuse_ipblock_add', array ($this, 'addIpBlock'));
@@ -601,43 +604,37 @@
                                     </td>
                                     <td>
                                         <?php
-                                            $date = $row->last_blocked;
+                                            /**
+                                             *  Both cases are measuring the same thing -- how long
+                                             *  it has been since this block last did anything -- so
+                                             *  both are described by the same levels. A block that
+                                             *  has never fired is measured from the day it was
+                                             *  added instead.
+                                             */
                                             $now = new \DateTime (current_time ('mysql'));
-                                            
-                                            if (empty ($date) || $date == '0000-00-00 00:00:00') {
-                                                $added = new \DateTime ($row->date_added);
-                                                $diff = $now->diff ($added);
-                                                $days = $diff->format ('%a');
-                                                
-                                                if ($days > 30) {
-                                                    $cls = 'admin-red admin-bold';
-                                                } // if ()
-                                                elseif ($days > 15) {
-                                                    $cls = 'admin-blue admin-italic';
-                                                } // elseif ()
-                                                else {
-                                                    $cls = 'admin-light admin-italic';
-                                                } // else
-                                                
-                                                echo '<span class="'.$cls.'">'.sprintf (__ ('No blocks recorded in %d days', 'fuseip'), $days).'</span>';
+                                            $last_blocked = $row->last_blocked;
+                                            $has_blocked = empty ($last_blocked) === false && $last_blocked != '0000-00-00 00:00:00';
+
+                                            $since = new \DateTime ($has_blocked ? $last_blocked : $row->date_added);
+                                            $days = intval ($now->diff ($since)->format ('%a'));
+
+                                            $status = BlockStatus::forDays ($days);
+
+                                            if ($has_blocked) {
+                                                $summary = date ('g:i:sa j/n/Y', strtotime ($last_blocked));
                                             } // if ()
                                             else {
-                                                $last_blocked = new \DateTime ($row->last_blocked);
-                                                $diff = $now->diff ($last_blocked);
-                                                $days = $diff->format ('%a');
-                                                
-                                                if ($days > 60) {
-                                                    $cls = 'admin-red admin-bold';
-                                                } // if ()
-                                                elseif ($days > 30) {
-                                                    $cls = 'admin-blue admin-bold';
-                                                } // elseif ()
-                                                else {
-                                                    $cls = 'admin-bold';
-                                                } // else
-                                                
-                                                echo '<span class="'.esc_attr ($cls).'">'.esc_html (date ('g:i:sa j/n/Y', strtotime ($row->last_blocked))).'</span>';
+                                                $summary = sprintf (
+                                                    _n ('No blocks recorded in %d day', 'No blocks recorded in %d days', $days, 'fuseip'),
+                                                    $days
+                                                );
                                             } // else
+                                            ?>
+                                            <span class="<?php echo esc_attr ($status ['class']); ?>">
+                                                <?php echo esc_html ($summary); ?>
+                                                (<?php echo esc_html ($status ['label']); ?>)
+                                            </span>
+                                            <?php
                                         ?>
                                     </td>
                                     <td><?php echo intval ($row->block_count); ?></td>
