@@ -110,6 +110,7 @@
                         
                         let btn = jQuery (this);
                         let field = jQuery ('#fuse-ipblocker-new-ip');
+                        let description = jQuery ('#fuse-ipblocker-new-description');
                         
                         let current_btn_text = btn.text ();
                         
@@ -121,13 +122,15 @@
                             data: {
                                 action: 'fuse_ipblock_add',
                                 nonce: fuseIpBlockNonce,
-                                ip: field.val ()
+                                ip: field.val (),
+                                description: description.val ()
                             },
                             method: 'post',
                             dataType: 'json',
                             success: function (response) {
                                 if (response ['success'] === true) {
                                     field.val ('');
+                                    description.val ('');
                                     jQuery ('#fuse-ip-blocker-list-table').replaceWith (response ['table']);
                                 } // if ()
                                 else {
@@ -169,6 +172,19 @@
             
             $ip = $this->_validateIpBlock (array_key_exists ('ip', $_POST) ? wp_unslash ($_POST ['ip']) : '');
             
+            /**
+             *  Free text typed by an administrator, held in a varchar(255) and
+             *  echoed back on this screen. Tags come out here rather than on
+             *  the way to the page, and it is cut to the column width in
+             *  characters -- MySQL counts characters, so a description of
+             *  accented or non-Latin text is not silently truncated mid-way by
+             *  the database.
+             */
+            $description = array_key_exists ('description', $_POST)
+                ? sanitize_text_field (wp_unslash ($_POST ['description']))
+                : '';
+            $description = mb_substr ($description, 0, 255);
+            
             if ($ip !== false) {
                 $query = $wpdb->prepare ("SELECT
                     ip
@@ -179,6 +195,7 @@
                 if (count ($wpdb->get_results ($query)) == 0) {
                     $wpdb->insert ($wpdb->prefix.'fuseip_blocks', array (
                         'ip' => $ip,
+                        'description' => $description,
                         'date_added' => current_time ('mysql'),
                         'last_blocked' => '0000-00-00 00:00:00',
                         'block_count' => 0
@@ -186,7 +203,9 @@
                     array (
                         '%s',
                         '%s',
-                        '%s'
+                        '%s',
+                        '%s',
+                        '%d'
                     ));
                     
                     $response = array (
@@ -287,6 +306,15 @@
                         <th><?php _e ('IP address to block', 'fuseip'); ?></th>
                         <td>
                             <input type="text" id="fuse-ipblocker-new-ip" name="fuseipblock-new" value="" class="regular-text" />
+                        </td>
+                    </tr>
+                    <tr>
+                        <th><?php _e ('Description', 'fuseip'); ?></th>
+                        <td>
+                            <input type="text" id="fuse-ipblocker-new-description" name="fuseipblock-new-description" value="" class="regular-text" maxlength="255" />
+                            <p class="description">
+                                <?php _e ('Optional. Why this address is blocked, so the list still makes sense months later.', 'fuseip'); ?>
+                            </p>
                         </td>
                     </tr>
                 </table>
@@ -565,6 +593,7 @@
             
             $query = "SELECT
                 block.ip AS ip,
+                block.description AS description,
                 block.date_added AS date_added,
                 block.last_blocked AS last_blocked,
                 block.block_count AS block_count
@@ -578,6 +607,7 @@
                     <thead>
                         <tr>
                             <th><?php _e ('IP Address / Range', 'fuseip'); ?></th>
+                            <th><?php _e ('Description', 'fuseip'); ?></th>
                             <th><?php _e ('Last Blocked', 'fuseip'); ?></th>
                             <th><?php _e ('Block Count', 'fuseip'); ?></th>
                             <th style="width: 20px;">&nbsp;</th>
@@ -586,6 +616,7 @@
                     <tfoot>
                         <tr>
                             <th><?php _e ('IP Address / Range', 'fuseip'); ?></th>
+                            <th><?php _e ('Description', 'fuseip'); ?></th>
                             <th><?php _e ('Last Blocked', 'fuseip'); ?></th>
                             <th><?php _e ('Block Count', 'fuseip'); ?></th>
                             <th style="width: 20px;">&nbsp;</th>
@@ -602,6 +633,7 @@
                                             <?php echo esc_html ($row->ip); ?>
                                         </a>
                                     </td>
+                                    <td><?php echo esc_html ($row->description); ?></td>
                                     <td>
                                         <?php
                                             /**
@@ -672,7 +704,7 @@
                         <?php else: ?>
                             
                             <tr>
-                                <td colspan="4" style="text-align: center"><?php _e ('No blocks recorded', 'fuseip'); ?></td>
+                                <td colspan="5" style="text-align: center"><?php _e ('No blocks recorded', 'fuseip'); ?></td>
                             </tr>
                             
                         <?php endif; ?>

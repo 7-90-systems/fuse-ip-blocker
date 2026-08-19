@@ -28,14 +28,31 @@ Activate the plugin. On activation it creates two database tables:
 
 | Table | Holds |
 | --- | --- |
-| `{prefix}fuseip_blocks` | One row per blocked address or range, with when it was added, when it last blocked something, and how many times |
+| `{prefix}fuseip_blocks` | One row per blocked address or range, with its description, when it was added, when it last blocked something, and how many times |
 | `{prefix}fuseip_logs` | One row per blocked request, with the time, the requested URL and the actual remote address |
+
+### Schema changes
+
+The tables carry a version, in the `fuse_ipblocker_schema` option, and the plugin
+checks it on every admin load. A site that updates the plugin without deactivating it
+first still gets any new columns, because activation is not the only thing that builds
+the tables. Once the version is current the check is a single option read.
+
+| Version | Change |
+| --- | --- |
+| 1 | The original two tables |
+| 2 | `description` on a block |
 
 ## Usage
 
 Go to **Fuse CMS → IP Blocker**. The screen lists the current blocks and lets you add
 a new one or delete an existing one. Both actions happen over AJAX without a page
 reload. Selecting an address from the list shows the logged requests for it.
+
+A block can carry an optional **description** — free text up to 255 characters, entered
+when the block is added and shown in its own column on the list, so the reason for a
+block is still there months later. It is stripped of tags on the way in and escaped on
+the way out.
 
 The page and both AJAX endpoints require the `manage_options` capability, and the
 endpoints are nonce-checked.

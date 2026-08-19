@@ -13,6 +13,40 @@
         
         use Singleton;
         
+        /**
+         *  @var string The option holding the installed schema version.
+         */
+        const OPTION_SCHEMA = 'fuse_ipblocker_schema';
+        
+        /**
+         *  @var int The schema version this code expects.
+         *
+         *  1   the original two tables
+         *  2   description on a block
+         */
+        const SCHEMA_VERSION = 2;
+        
+        
+        
+        
+        /**
+         *  Bring the tables up to date if they are behind.
+         *
+         *  Activation is the only thing that used to build the tables, so a
+         *  site that updates the plugin without deactivating it first would
+         *  never get a new column. This runs on every admin load, does nothing
+         *  but read an option once the schema is current, and hands off to
+         *  dbDelta when it is not -- dbDelta adds what is missing and leaves
+         *  what is already there alone.
+         */
+        public function maybeUpgrade () {
+            if (intval (get_option (self::OPTION_SCHEMA, 0)) >= self::SCHEMA_VERSION) {
+                return;
+            } // if ()
+            
+            $this->installDatabase ();
+        } // maybeUpgrade ()
+        
         
         
         
@@ -27,10 +61,11 @@
             // Create our blocked IP database table
             $sql = "CREATE TABLE `".$wpdb->prefix."fuseip_blocks` (
                 `ip` varchar(255) NOT NULL,
+                `description` varchar(255) NOT NULL DEFAULT '',
                 `date_added` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 `last_blocked` datetime NOT NULL,
                 `block_count` bigint UNSIGNED NOT NULL DEFAULT '0',
-                PRIMARY KEY (`ip`)
+                PRIMARY KEY  (`ip`)
             ) ".$wpdb->get_charset_collate ().";";
             dbDelta ($sql);
             
@@ -39,13 +74,15 @@
                 `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
                 `ip` varchar(255) NOT NULL,
                 `hit_time` datetime NOT NULL,
-                `hit_url` TEXT NOT NULL DEFAULT '',
+                `hit_url` TEXT NOT NULL,
                 `remote_ip` varchar(255) NOT NULL,
-                PRIMARY KEY (`id`),
+                PRIMARY KEY  (`id`),
                 KEY `ip` (`ip`),
                 KEY `hit_time_remote_ip` (`hit_time`,`remote_ip`)
             ) ".$wpdb->get_charset_collate ().";";
             dbDelta ($sql);
+            
+            update_option (self::OPTION_SCHEMA, self::SCHEMA_VERSION);
         } // installDatabase ()
         
     } // class Install
