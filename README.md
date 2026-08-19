@@ -70,10 +70,15 @@ stored as `2001:db8:85a3::8a2e:370:7334`.
 
 ## Block status levels
 
-Each row in the block list is described and coloured by how long it has been since that
-block last stopped a request. A block that has just fired is a live problem; one that
-has not fired in months probably is not, and is a candidate for removal. A block that
-has never fired is measured from the day it was added instead.
+The block list colours two of its columns, on two separate measures. Each level is
+shown by colour alone; its name is not printed.
+
+### Block age
+
+The **Last Blocked** column is coloured by how long it has been since that block last
+stopped a request. A block that has just fired is a live problem; one that has not
+fired in months probably is not, and is a candidate for removal. A block that has never
+fired is measured from the day it was added instead.
 
 | Level | Applies when | Shown as | Default |
 | --- | --- | --- | --- |
@@ -82,12 +87,31 @@ has never fired is measured from the day it was added instead.
 | Good | up to the *Good* day count | green | 60 days |
 | Clear | anything older | bold green | — |
 
-The three day counts are set under **Fuse CMS → Site Settings**, in the **IP Blocker**
-panel. They have to climb, so if they are set out of order each one is held at or above
-the one below it rather than the list being allowed to go strange.
+### Block count
 
-Developers can change the labels and CSS classes with the
-`fuse_ipblocker_status_levels` filter.
+The **Block Count** column is coloured by how many times the block has fired, whatever
+the date says — a block that has stopped hundreds of requests is worth seeing even if
+it has been quiet lately. Its thresholds are floors rather than ceilings, the opposite
+way round to the day counts, because a high count is the bad end of this measure while
+a high day count is the good end of that one.
+
+| Level | Applies when | Shown as | Default |
+| --- | --- | --- | --- |
+| Normal | below the *Warning* count | unstyled | — |
+| Warning | from the *Warning* count | red | 20 blocks |
+| Severe | from the *Severe* count | bold red | 50 blocks |
+
+### Settings
+
+All five numbers are set under **Fuse CMS → Site Settings**, in the **IP Blocker**
+panel, grouped as *Block age* and *Block count*. Each set has to climb, so if they are
+set out of order each one is held at or above the one below it rather than the list
+being allowed to go strange.
+
+Developers can change the CSS classes with the `fuse_ipblocker_status_levels` and
+`fuse_ipblocker_count_levels` filters. Each level also carries a `label`, which the
+block list does not print but which is there for anything else that wants to name the
+level.
 
 ## The block message
 

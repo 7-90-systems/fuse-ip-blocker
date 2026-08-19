@@ -632,12 +632,34 @@
                                             ?>
                                             <span class="<?php echo esc_attr ($status ['class']); ?>">
                                                 <?php echo esc_html ($summary); ?>
-                                                (<?php echo esc_html ($status ['label']); ?>)
                                             </span>
                                             <?php
                                         ?>
                                     </td>
-                                    <td><?php echo intval ($row->block_count); ?></td>
+                                    <td>
+                                        <?php
+                                            /**
+                                             *  A high count is worth seeing whenever the block
+                                             *  last fired, so the column is levelled on its own
+                                             *  rather than inheriting the date's colour. An
+                                             *  ordinary count carries no class, so the column
+                                             *  only draws the eye when it should.
+                                             */
+                                            $count = BlockStatus::forCount ($row->block_count);
+                                            $total = intval ($row->block_count);
+
+                                            if ($count ['class'] === '') {
+                                                echo esc_html ($total);
+                                            } // if ()
+                                            else {
+                                                printf (
+                                                    '<span class="%s">%s</span>',
+                                                    esc_attr ($count ['class']),
+                                                    esc_html ($total)
+                                                );
+                                            } // else
+                                        ?>
+                                    </td>
                                     <td style="width: 20px;">
                                         <a href="#" class="delete-ip admin-red" data-ip="<?php echo esc_attr ($row->ip); ?>">
                                             <span class="dashicons dashicons-dismiss"></span>
