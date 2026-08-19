@@ -21,6 +21,15 @@
          */
         const NONCE_ACTION = 'fuse-ipblocker';
         
+        /**
+         *  @var string The two lists this screen keeps.
+         *
+         *  Both are matched the same way and edited the same way, so most of
+         *  the work is shared and told which list it is working on.
+         */
+        const LIST_BLOCK = 'block';
+        const LIST_WHITELIST = 'whitelist';
+        
         
         
         
@@ -37,7 +46,47 @@
             // Add our AJAX functions
             add_action ('wp_ajax_fuse_ipblock_add', array ($this, 'addIpBlock'));
             add_action ('wp_ajax_fuse_ipblock_delete', array ($this, 'deleteIpBlock'));
+            add_action ('wp_ajax_fuse_ipwhitelist_add', array ($this, 'addIpWhitelist'));
+            add_action ('wp_ajax_fuse_ipwhitelist_delete', array ($this, 'deleteIpWhitelist'));
         } // _init ()
+        
+        
+        
+        
+        /**
+         *  Get the table holding one of our lists.
+         *
+         *  @param string $list One of the LIST_ constants.
+         *
+         *  @return string The full table name.
+         */
+        protected function _tableFor ($list) {
+            global $wpdb;
+            
+            if ($list === self::LIST_WHITELIST) {
+                return $wpdb->prefix.'fuseip_whitelist';
+            } // if ()
+            
+            return $wpdb->prefix.'fuseip_blocks';
+        } // _tableFor ()
+        
+        
+        
+        
+        /**
+         *  Render one of our lists.
+         *
+         *  @param string $list One of the LIST_ constants.
+         *
+         *  @return string The table markup.
+         */
+        protected function _listTable ($list) {
+            if ($list === self::LIST_WHITELIST) {
+                return $this->_whitelistTable ();
+            } // if ()
+            
+            return $this->_blockListTable ();
+        } // _listTable ()
         
         
         
@@ -53,20 +102,86 @@
         
         
         /**
+         *  Which tab the screen is showing.
+         *
+         *  Anything unrecognised falls back to the block list rather than
+         *  showing nothing, so a stale bookmark still lands somewhere useful.
+         *
+         *  @return string One of the LIST_ constants.
+         */
+        protected function _currentTab () {
+            $tab = array_key_exists ('tab', $_GET) ? sanitize_key (wp_unslash ($_GET ['tab'])) : '';
+            
+            if ($tab === self::LIST_WHITELIST) {
+                return self::LIST_WHITELIST;
+            } // if ()
+            
+            return self::LIST_BLOCK;
+        } // _currentTab ()
+        
+        
+        
+        
+        /**
+         *  Show the tab strip.
+         *
+         *  Plain nav-tab markup, so it looks and behaves like every other
+         *  tabbed screen in the admin.
+         *
+         *  @param string $current The tab currently being shown.
+         */
+        protected function _showTabs ($current) {
+            $tabs = array (
+                self::LIST_BLOCK => __ ('Blocked addresses', 'fuseip'),
+                self::LIST_WHITELIST => __ ('Whitelist', 'fuseip')
+            );
+            ?>
+                <h2 class="nav-tab-wrapper">
+                    <?php foreach ($tabs as $tab => $label): ?>
+                        <a href="<?php echo esc_url (add_query_arg (array (
+                               'page' => 'ipblocker',
+                               'tab' => $tab
+                           ), admin_url ('admin.php'))); ?>"
+                           class="nav-tab<?php echo ($tab === $current) ? ' nav-tab-active' : ''; ?>">
+                            <?php echo esc_html ($label); ?>
+                        </a>
+                    <?php endforeach; ?>
+                </h2>
+            <?php
+        } // _showTabs ()
+        
+        
+        
+        
+        /**
          *  Set up the block list page.
          */
         public function blockListPage () {
+            $tab = $this->_currentTab ();
+            $logs = array_key_exists ('section', $_GET) && $_GET ['section'] == 'logs';
             ?>
             <div class="wrap">
                 
-                <?php
-                    if (array_key_exists ('section', $_GET) && $_GET ['section'] == 'logs') {
-                        $this->_showLogsPage ();
-                    } // if ()
-                    else {
-                        $this->_showBlockListPage ();
-                    } // else
-                ?>
+                <?php if ($logs === true): ?>
+                
+                    <?php $this->_showLogsPage (); ?>
+                
+                <?php else: ?>
+                
+                    <h1><?php _e ('IP Blocker', 'fuseip'); ?></h1>
+                    
+                    <?php $this->_showTabs ($tab); ?>
+                    
+                    <?php
+                        if ($tab === self::LIST_WHITELIST) {
+                            $this->_showWhitelistPage ();
+                        } // if ()
+                        else {
+                            $this->_showBlockListPage ();
+                        } // else
+                    ?>
+                
+                <?php endif; ?>
                              
             </div>
             <script type="text/javascript">
@@ -74,19 +189,36 @@
                 jQuery (document).ready (function () {
                     var fuseIpBlockNonce = '<?php echo esc_js (wp_create_nonce (self::NONCE_ACTION)); ?>';
                     
-                    // Delete a blocked IP
-                    jQuery ('#fuse-ipblocker-list-table-container').on ('click', '.delete-ip', function (e) {
+                    /**
+                     *  Both lists are edited the same way, so one pair of
+                     *  handlers serves them and the list says which endpoint to
+                     *  call. Only one tab is on the page at a time.
+                     */
+                    var fuseIpActions = {
+                        'block': {
+                            add: 'fuse_ipblock_add',
+                            remove: 'fuse_ipblock_delete'
+                        },
+                        'whitelist': {
+                            add: 'fuse_ipwhitelist_add',
+                            remove: 'fuse_ipwhitelist_delete'
+                        }
+                    };
+                    
+                    // Delete an entry
+                    jQuery ('.fuse-ipblocker-list-container').on ('click', '.delete-ip', function (e) {
                         e.preventDefault ();
                         
                         let btn = jQuery (this);
                         let row = btn.closest ('tr');
+                        let list = btn.closest ('.fuse-ipblocker-list-container').data ('list');
                         
                         row.hide ();
                         
                         jQuery.ajax ({
                             url: ajaxurl,
                             data: {
-                                action: 'fuse_ipblock_delete',
+                                action: fuseIpActions [list].remove,
                                 nonce: fuseIpBlockNonce,
                                 ip: btn.data ('ip')
                             },
@@ -104,13 +236,16 @@
                         });
                     });
                     
-                    // Add a new IP
-                    jQuery ('#fuse-ipblock-add-ip-button').click (function (e) {
+                    // Add a new entry
+                    jQuery ('.fuse-ipblocker-add').on ('click', '.fuse-ipblocker-add-button', function (e) {
                         e.preventDefault ();
                         
                         let btn = jQuery (this);
-                        let field = jQuery ('#fuse-ipblocker-new-ip');
-                        let description = jQuery ('#fuse-ipblocker-new-description');
+                        let wrap = btn.closest ('.fuse-ipblocker-add');
+                        let list = wrap.data ('list');
+                        let field = wrap.find ('.fuse-ipblocker-new-ip');
+                        let description = wrap.find ('.fuse-ipblocker-new-description');
+                        let container = jQuery ('.fuse-ipblocker-list-container[data-list="' + list + '"]');
                         
                         let current_btn_text = btn.text ();
                         
@@ -120,7 +255,7 @@
                         jQuery.ajax ({
                             url: ajaxurl,
                             data: {
-                                action: 'fuse_ipblock_add',
+                                action: fuseIpActions [list].add,
                                 nonce: fuseIpBlockNonce,
                                 ip: field.val (),
                                 description: description.val ()
@@ -131,7 +266,7 @@
                                 if (response ['success'] === true) {
                                     field.val ('');
                                     description.val ('');
-                                    jQuery ('#fuse-ip-blocker-list-table').replaceWith (response ['table']);
+                                    container.html (response ['table']);
                                 } // if ()
                                 else {
                                     alert (response.message);
@@ -153,25 +288,63 @@
         
         
         /**
-         *  Add a new IP address
+         *  Add a new IP address to the block list.
          */
         public function addIpBlock () {
+            $this->_addEntry (self::LIST_BLOCK);
+        } // addIpBlock ()
+
+        /**
+         *  Add a new IP address to the whitelist.
+         */
+        public function addIpWhitelist () {
+            $this->_addEntry (self::LIST_WHITELIST);
+        } // addIpWhitelist ()
+
+        /**
+         *  Delete an IP block.
+         */
+        public function deleteIpBlock () {
+            $this->_deleteEntry (self::LIST_BLOCK);
+        } // deleteIpBlock ()
+
+        /**
+         *  Delete a whitelist entry.
+         */
+        public function deleteIpWhitelist () {
+            $this->_deleteEntry (self::LIST_WHITELIST);
+        } // deleteIpWhitelist ()
+
+
+
+
+        /**
+         *  Add an address to one of our lists.
+         *
+         *  Both lists take the same values, validate them the same way and are
+         *  redrawn the same way, so the work is here once and the list only
+         *  decides which table and which columns.
+         *
+         *  @param string $list One of the LIST_ constants.
+         */
+        protected function _addEntry ($list) {
             global $wpdb;
-            
+
             $response = array (
                 'success' => false,
                 'message' => __ ('An unknown error has occured', 'fuseip')
             );
-            
+
             if ($this->_checkRequest () === false) {
                 wp_send_json (array (
                     'success' => false,
                     'message' => __ ('You are not allowed to do that.', 'fuseip')
                 ));
             } // if ()
-            
+
+            $table = $this->_tableFor ($list);
             $ip = $this->_validateIpBlock (array_key_exists ('ip', $_POST) ? wp_unslash ($_POST ['ip']) : '');
-            
+
             /**
              *  Free text typed by an administrator, held in a varchar(255) and
              *  echoed back on this screen. Tags come out here rather than on
@@ -184,33 +357,41 @@
                 ? sanitize_text_field (wp_unslash ($_POST ['description']))
                 : '';
             $description = mb_substr ($description, 0, 255);
-            
+
             if ($ip !== false) {
                 $query = $wpdb->prepare ("SELECT
                     ip
-                FROM ".$wpdb->prefix."fuseip_blocks
+                FROM ".$table."
                 WHERE ip = %s
                 LIMIT 1", $ip);
-                
+
                 if (count ($wpdb->get_results ($query)) == 0) {
-                    $wpdb->insert ($wpdb->prefix.'fuseip_blocks', array (
+                    $row = array (
                         'ip' => $ip,
                         'description' => $description,
-                        'date_added' => current_time ('mysql'),
-                        'last_blocked' => '0000-00-00 00:00:00',
-                        'block_count' => 0
-                    ),
-                    array (
+                        'date_added' => current_time ('mysql')
+                    );
+
+                    if ($list === self::LIST_WHITELIST) {
+                        $row ['last_allowed'] = '0000-00-00 00:00:00';
+                        $row ['allow_count'] = 0;
+                    } // if ()
+                    else {
+                        $row ['last_blocked'] = '0000-00-00 00:00:00';
+                        $row ['block_count'] = 0;
+                    } // else
+
+                    $wpdb->insert ($table, $row, array (
                         '%s',
                         '%s',
                         '%s',
                         '%s',
                         '%d'
                     ));
-                    
+
                     $response = array (
                         'success' => true,
-                        'table' => $this->_blockListTable ()
+                        'table' => $this->_listTable ($list)
                     );
                 } // if ()
                 else {
@@ -220,50 +401,61 @@
             else {
                 $response ['message'] = $this->_invalidIpMessage ();
             } // else
-            
+
             wp_send_json ($response);
-        } // addIpBlock ()
-        
+        } // _addEntry ()
+
+
+
+
         /**
-         *  Delete an IP block.
+         *  Remove an address from one of our lists.
+         *
+         *  The logs belong to a block, so they only go when a block does. A
+         *  whitelist entry has none.
+         *
+         *  @param string $list One of the LIST_ constants.
          */
-        public function deleteIpBlock () {
+        protected function _deleteEntry ($list) {
             global $wpdb;
-            
+
             $response = array (
                 'success' => false,
                 'message' => __ ('An unknown error has occured', 'fuseip')
             );
-            
+
             if ($this->_checkRequest () === false) {
                 wp_send_json (array (
                     'success' => false,
                     'message' => __ ('You are not allowed to do that.', 'fuseip')
                 ));
             } // if ()
-            
+
+            $table = $this->_tableFor ($list);
             $ip = array_key_exists ('ip', $_POST) ? sanitize_text_field (wp_unslash ($_POST ['ip'])) : '';
-            
+
             if (strlen ($ip) > 1) {
                 $query = $wpdb->prepare ("SELECT
                     ip
-                FROM ".$wpdb->prefix."fuseip_blocks
+                FROM ".$table."
                 WHERE ip = %s
                 LIMIT 1", $ip);
-                
+
                 if (count ($wpdb->get_results ($query)) == 1) {
-                    $wpdb->delete ($wpdb->prefix.'fuseip_logs', array (
+                    if ($list === self::LIST_BLOCK) {
+                        $wpdb->delete ($wpdb->prefix.'fuseip_logs', array (
+                            'ip' => $ip
+                        ), array (
+                            '%s'
+                        ));
+                    } // if ()
+
+                    $wpdb->delete ($table, array (
                         'ip' => $ip
                     ), array (
                         '%s'
                     ));
-                    
-                    $wpdb->delete ($wpdb->prefix.'fuseip_blocks', array (
-                        'ip' => $ip
-                    ), array (
-                        '%s'
-                    ));
-                    
+
                     $response = array (
                         'success' => true
                     );
@@ -275,52 +467,55 @@
             else {
                 $response ['message'] = __ ('An invalid IP address has been entered.', 'fuseip');
             } // else
-            
+
             wp_send_json ($response);
-        } // deleteIpBlock ()
+        } // _deleteEntry ()
         
         
         
         
         /**
-         *  Show the block list page.
+         *  Show the block list tab.
          */
         protected function _showBlockListPage () {
             ?>
-                <h1><?php _e ('Block IP Addresses', 'fuseip'); ?></h1>
-                
-                <div id="fuse-ipblocker-list-table-container">
+                <h2><?php _e ('Block IP Addresses', 'fuseip'); ?></h2>
+
+                <div id="fuse-ipblocker-list-table-container" class="fuse-ipblocker-list-container" data-list="<?php echo esc_attr (self::LIST_BLOCK); ?>">
                     <?php
                         echo $this->_blockListTable ();
                     ?>
                 </div>
-                
+
                 <p>&nbsp;</p>
                 <hr />
                 <p>&nbsp;</p>
-                
+
                 <h3><?php _e ('Block a new IP Address', 'fuseip'); ?></h3>
-                
-                <table class="form-table">
-                    <tr>
-                        <th><?php _e ('IP address to block', 'fuseip'); ?></th>
-                        <td>
-                            <input type="text" id="fuse-ipblocker-new-ip" name="fuseipblock-new" value="" class="regular-text" />
-                        </td>
-                    </tr>
-                    <tr>
-                        <th><?php _e ('Description', 'fuseip'); ?></th>
-                        <td>
-                            <input type="text" id="fuse-ipblocker-new-description" name="fuseipblock-new-description" value="" class="regular-text" maxlength="255" />
-                            <p class="description">
-                                <?php _e ('Optional. Why this address is blocked, so the list still makes sense months later.', 'fuseip'); ?>
-                            </p>
-                        </td>
-                    </tr>
-                </table>
-                <p>
-                    <button id="fuse-ipblock-add-ip-button" class="button button-primary"><?php _e ('Add new IP block', 'fuseip'); ?></button>
-                </p>
+
+                <div class="fuse-ipblocker-add" data-list="<?php echo esc_attr (self::LIST_BLOCK); ?>">
+                    <table class="form-table">
+                        <tr>
+                            <th><?php _e ('IP address to block', 'fuseip'); ?></th>
+                            <td>
+                                <input type="text" id="fuse-ipblocker-new-ip" name="fuseipblock-new" value="" class="regular-text fuse-ipblocker-new-ip" />
+                            </td>
+                        </tr>
+                        <tr>
+                            <th><?php _e ('Description', 'fuseip'); ?></th>
+                            <td>
+                                <input type="text" id="fuse-ipblocker-new-description" name="fuseipblock-new-description" value="" class="regular-text fuse-ipblocker-new-description" maxlength="255" />
+                                <p class="description">
+                                    <?php _e ('Optional. Why this address is blocked, so the list still makes sense months later.', 'fuseip'); ?>
+                                </p>
+                            </td>
+                        </tr>
+                    </table>
+                    <p>
+                        <button id="fuse-ipblock-add-ip-button" class="button button-primary fuse-ipblocker-add-button"><?php _e ('Add new IP block', 'fuseip'); ?></button>
+                    </p>
+                </div>
+
                 <p class="description">
                     <?php _e ('You can block a full IP address or a range by removing parts.', 'fuseip'); ?>
                 </p>
@@ -330,9 +525,74 @@
                 </p>
                 <p class="description">
                     <?php _e ('IPV6 - 2001:0db8:85a3:0000:0000:8a2e:0370:7334 blocks a single address, or 2001:0db8:85a3:0000:0000:8a2e:0370: blocks a range.', 'fuseip'); ?>
-                </p>   
+                </p>
             <?php
         } // _showBlockListPage ()
+
+
+
+
+        /**
+         *  Show the whitelist tab.
+         *
+         *  Deliberately the same shape as the block tab. It is the same job in
+         *  reverse, and there is nothing to be gained by making an
+         *  administrator learn a second screen.
+         */
+        protected function _showWhitelistPage () {
+            ?>
+                <h2><?php _e ('Whitelist IP Addresses', 'fuseip'); ?></h2>
+
+                <p>
+                    <?php _e ('A whitelisted address is never blocked, even when it matches a block. Use it to keep an office or a monitoring service in while a wide range is blocked.', 'fuseip'); ?>
+                </p>
+
+                <div class="fuse-ipblocker-list-container" data-list="<?php echo esc_attr (self::LIST_WHITELIST); ?>">
+                    <?php
+                        echo $this->_whitelistTable ();
+                    ?>
+                </div>
+
+                <p>&nbsp;</p>
+                <hr />
+                <p>&nbsp;</p>
+
+                <h3><?php _e ('Whitelist a new IP Address', 'fuseip'); ?></h3>
+
+                <div class="fuse-ipblocker-add" data-list="<?php echo esc_attr (self::LIST_WHITELIST); ?>">
+                    <table class="form-table">
+                        <tr>
+                            <th><?php _e ('IP address to whitelist', 'fuseip'); ?></th>
+                            <td>
+                                <input type="text" name="fuseipwhitelist-new" value="" class="regular-text fuse-ipblocker-new-ip" />
+                            </td>
+                        </tr>
+                        <tr>
+                            <th><?php _e ('Description', 'fuseip'); ?></th>
+                            <td>
+                                <input type="text" name="fuseipwhitelist-new-description" value="" class="regular-text fuse-ipblocker-new-description" maxlength="255" />
+                                <p class="description">
+                                    <?php _e ('Optional. Why this address is whitelisted, so the list still makes sense months later.', 'fuseip'); ?>
+                                </p>
+                            </td>
+                        </tr>
+                    </table>
+                    <p>
+                        <button class="button button-primary fuse-ipblocker-add-button"><?php _e ('Add new whitelist entry', 'fuseip'); ?></button>
+                    </p>
+                </div>
+
+                <p class="description">
+                    <?php _e ('Addresses and ranges are entered exactly as they are on the block tab.', 'fuseip'); ?>
+                </p>
+                <p class="description">
+                    <?php _e ('IPV4 - 127.0.0.1 whitelists a single address, or 127.0.0. whitelists all IPs from .0 to .255', 'fuseip'); ?>
+                </p>
+                <p class="description">
+                    <?php _e ('IPV6 - 2001:0db8:85a3:0000:0000:8a2e:0370:7334 whitelists a single address, or 2001:0db8:85a3:0000:0000:8a2e:0370: whitelists a range.', 'fuseip'); ?>
+                </p>
+            <?php
+        } // _showWhitelistPage ()
         
         /**
          *  Show the logs page.
@@ -586,7 +846,113 @@
         
         
         /**
+         *  Output our whitelist table.
+         *
+         *  The same columns as the block list, reading the other way: when the
+         *  entry last kept somebody in, and how often. Neither is coloured --
+         *  the block list's levels say how stale a block is, and a whitelist
+         *  entry that has never been needed is not a problem to be flagged.
+         *
+         *  @return string The table markup.
+         */
+        protected function _whitelistTable () {
+            global $wpdb;
+
+            $query = "SELECT
+                allowed.ip AS ip,
+                allowed.description AS description,
+                allowed.date_added AS date_added,
+                allowed.last_allowed AS last_allowed,
+                allowed.allow_count AS allow_count
+            FROM ".$wpdb->prefix."fuseip_whitelist AS allowed
+            ORDER BY allowed.ip ASC";
+            $result = $wpdb->get_results ($query);
+
+            ob_start ();
+            ?>
+                <table id="fuse-ip-whitelist-table" class="widefat">
+                    <thead>
+                        <tr>
+                            <th><?php _e ('IP Address / Range', 'fuseip'); ?></th>
+                            <th><?php _e ('Description', 'fuseip'); ?></th>
+                            <th><?php _e ('Last Allowed', 'fuseip'); ?></th>
+                            <th><?php _e ('Allow Count', 'fuseip'); ?></th>
+                            <th style="width: 20px;">&nbsp;</th>
+                        </tr>
+                    </thead>
+                    <tfoot>
+                        <tr>
+                            <th><?php _e ('IP Address / Range', 'fuseip'); ?></th>
+                            <th><?php _e ('Description', 'fuseip'); ?></th>
+                            <th><?php _e ('Last Allowed', 'fuseip'); ?></th>
+                            <th><?php _e ('Allow Count', 'fuseip'); ?></th>
+                            <th style="width: 20px;">&nbsp;</th>
+                        </tr>
+                    </tfoot>
+                    <tbody>
+                        <?php if (count ($result) > 0): ?>
+
+                            <?php foreach ($result as $row): ?>
+
+                                <tr>
+                                    <td><?php echo esc_html ($row->ip); ?></td>
+                                    <td><?php echo esc_html ($row->description); ?></td>
+                                    <td>
+                                        <?php
+                                            /**
+                                             *  An entry only counts as used when it has
+                                             *  actually overridden a block, so most of
+                                             *  them will sit at never -- which is the
+                                             *  quiet, correct state, not a warning.
+                                             */
+                                            $last = $row->last_allowed;
+                                            $used = empty ($last) === false && $last != '0000-00-00 00:00:00';
+
+                                            if ($used === true) {
+                                                echo esc_html (date ('g:i:sa j/n/Y', strtotime ($last)));
+                                            } // if ()
+                                            else {
+                                                printf (
+                                                    /* translators: %s is the date the entry was added. */
+                                                    esc_html__ ('Never used, added %s', 'fuseip'),
+                                                    esc_html (date ('j/n/Y', strtotime ($row->date_added)))
+                                                );
+                                            } // else
+                                        ?>
+                                    </td>
+                                    <td><?php echo intval ($row->allow_count); ?></td>
+                                    <td style="width: 20px;">
+                                        <a href="#" class="delete-ip admin-red" data-ip="<?php echo esc_attr ($row->ip); ?>">
+                                            <span class="dashicons dashicons-dismiss"></span>
+                                        </a>
+                                    </td>
+                                </tr>
+
+                            <?php endforeach; ?>
+
+                        <?php else: ?>
+
+                            <tr>
+                                <td colspan="5" style="text-align: center"><?php _e ('No addresses whitelisted', 'fuseip'); ?></td>
+                            </tr>
+
+                        <?php endif; ?>
+                    </tbody>
+                </table>
+            <?php
+            $html = ob_get_contents ();
+            ob_end_clean ();
+
+            return $html;
+        } // _whitelistTable ()
+
+
+
+
+        /**
          *  Output our block list table.
+         *
+         *  @return string The table markup.
          */
         protected function _blockListTable () {
             global $wpdb;

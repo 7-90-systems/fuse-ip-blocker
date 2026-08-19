@@ -23,8 +23,9 @@
          *
          *  1   the original two tables
          *  2   description on a block
+         *  3   the whitelist table
          */
-        const SCHEMA_VERSION = 2;
+        const SCHEMA_VERSION = 3;
         
         
         
@@ -52,6 +53,9 @@
         
         /**
          *  Install our database tables.
+         *
+         *  dbDelta creates what is missing and alters what has changed, so this
+         *  is safe to run against an existing install as well as a new one.
          */
         public function installDatabase () {
             require_once (ABSPATH.'wp-admin/includes/upgrade.php');
@@ -79,6 +83,25 @@
                 PRIMARY KEY  (`id`),
                 KEY `ip` (`ip`),
                 KEY `hit_time_remote_ip` (`hit_time`,`remote_ip`)
+            ) ".$wpdb->get_charset_collate ().";";
+            dbDelta ($sql);
+            
+            /**
+             *  Create our whitelist table.
+             *
+             *  The same shape as the blocks table, because it is matched the
+             *  same way -- as a left-hand prefix of the visitor's address -- so
+             *  an entry can be one address or a range. last_allowed and
+             *  allow_count only move when an entry actually overrides a block,
+             *  not on every request from a whitelisted address.
+             */
+            $sql = "CREATE TABLE `".$wpdb->prefix."fuseip_whitelist` (
+                `ip` varchar(255) NOT NULL,
+                `description` varchar(255) NOT NULL DEFAULT '',
+                `date_added` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                `last_allowed` datetime NOT NULL,
+                `allow_count` bigint UNSIGNED NOT NULL DEFAULT '0',
+                PRIMARY KEY  (`ip`)
             ) ".$wpdb->get_charset_collate ().";";
             dbDelta ($sql);
             

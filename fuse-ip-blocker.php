@@ -5,7 +5,7 @@
      *
      *  Plugin Name: Fuse IP Blocker
      *  Plugin URI: https://fusecms.org
-     *  Description: Block IP addresses from accessing your site. Block by IP address or range, Works with IPV4 and IPV6.
+     *  Description: Block IP addresses from accessing your site, with a whitelist for the ones that must always get in. Block by IP address or range, Works with IPV4 and IPV6.
      *  Author: 7-90 Systems
      *  Author URI: https://7-90.com.au
      *  Version: 1.0
@@ -75,16 +75,28 @@
         
         $block_set = false;
         
+        /**
+         *  Both tables are looked for in the one query. The whitelist arrives
+         *  in a later schema version than the blocks table, and this runs on
+         *  every request -- including the ones before an administrator has
+         *  loaded a page and triggered the upgrade -- so its absence has to be
+         *  an ordinary case rather than a database error.
+         */
         $query = $wpdb->prepare ("SELECT
-            *
+            table_name
         FROM information_schema.tables
         WHERE table_schema = %s
-            AND table_name = %s
-        LIMIT 1", DB_NAME, $wpdb->prefix.'fuseip_blocks');
-        $result = $wpdb->get_results ($query);
+            AND table_name IN (%s, %s)", DB_NAME,
+            $wpdb->prefix.'fuseip_blocks', $wpdb->prefix.'fuseip_whitelist');
+        $tables = $wpdb->get_col ($query);
+        
+        // Table names come back in whatever case the server stores them.
+        $tables = array_map ('strtolower', is_array ($tables) ? $tables : array ());
+        
+        $has_whitelist = in_array (strtolower ($wpdb->prefix.'fuseip_whitelist'), $tables, true);
     
         // Only check if the database table exists
-        if (count ($result) == 1) {
+        if (in_array (strtolower ($wpdb->prefix.'fuseip_blocks'), $tables, true)) {
             // Nothing to check against on CLI or a malformed request.
             if (array_key_exists ('REMOTE_ADDR', $_SERVER) === false) {
                 return;
@@ -100,6 +112,34 @@
             
             $db_ip = $wpdb->get_var ($query);
 
+            /**
+             *  A whitelist entry beats a block. This is only consulted once a
+             *  block has already matched, so an ordinary visitor never pays for
+             *  it, and the counters only move when an entry has actually kept
+             *  somebody in.
+             */
+            if ($has_whitelist === true && empty ($db_ip) === false) {
+                $query = $wpdb->prepare ("SELECT
+                    ip
+                FROM ".$wpdb->prefix."fuseip_whitelist
+                WHERE ip = SUBSTRING(%s, 1, LENGTH(ip))
+                LIMIT 1", $ip);
+                
+                $allowed = $wpdb->get_var ($query);
+                
+                if (empty ($allowed) === false) {
+                    $query = $wpdb->prepare ("UPDATE ".$wpdb->prefix."fuseip_whitelist
+                    SET allow_count = COALESCE(allow_count, 0) + 1,
+                        last_allowed = %s
+                    WHERE ip = %s
+                    LIMIT 1", current_time ('mysql'), $allowed);
+                    
+                    $wpdb->query ($query);
+                    
+                    return;
+                } // if ()
+            } // if ()
+            
             if ($block_set === false && empty ($db_ip) === false) {
                 $block_set = true;
                 

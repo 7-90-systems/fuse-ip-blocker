@@ -4,7 +4,9 @@ Blocks IP addresses from reaching a WordPress site. Blocked visitors are served 
 configurable message and the request stops there. Every block is logged, so you can
 see which addresses are being turned away and what they were asking for.
 
-Works with both IPv4 and IPv6, and can block a single address or a range.
+Addresses can also be whitelisted, which keeps them in even when they match a block.
+
+Works with both IPv4 and IPv6, and can block or whitelist a single address or a range.
 
 - **Author:** 7-90 Systems — <https://7-90.com.au>
 - **Plugin URI:** <https://fusecms.org>
@@ -30,6 +32,7 @@ Activate the plugin. On activation it creates two database tables:
 | --- | --- |
 | `{prefix}fuseip_blocks` | One row per blocked address or range, with its description, when it was added, when it last blocked something, and how many times |
 | `{prefix}fuseip_logs` | One row per blocked request, with the time, the requested URL and the actual remote address |
+| `{prefix}fuseip_whitelist` | One row per whitelisted address or range, with its description, when it was added, when it last let somebody through, and how many times |
 
 ### Schema changes
 
@@ -42,20 +45,43 @@ the tables. Once the version is current the check is a single option read.
 | --- | --- |
 | 1 | The original two tables |
 | 2 | `description` on a block |
+| 3 | The whitelist table |
 
 ## Usage
 
-Go to **Fuse CMS → IP Blocker**. The screen lists the current blocks and lets you add
-a new one or delete an existing one. Both actions happen over AJAX without a page
-reload. Selecting an address from the list shows the logged requests for it.
+Go to **Fuse CMS → IP Blocker**. The screen has two tabs:
 
-A block can carry an optional **description** — free text up to 255 characters, entered
-when the block is added and shown in its own column on the list, so the reason for a
-block is still there months later. It is stripped of tags on the way in and escaped on
+| Tab | What it holds |
+| --- | --- |
+| **Blocked addresses** | The block list. Opens by default |
+| **Whitelist** | Addresses that are never blocked |
+
+Each tab lists its entries and lets you add a new one or delete an existing one. Both
+actions happen over AJAX without a page reload. Selecting an address from the block
+list shows the logged requests for it.
+
+Either kind of entry can carry an optional **description** — free text up to 255
+characters, entered when the entry is added and shown in its own column, so the reason
+for it is still there months later. It is stripped of tags on the way in and escaped on
 the way out.
 
-The page and both AJAX endpoints require the `manage_options` capability, and the
+The page and all four AJAX endpoints require the `manage_options` capability, and the
 endpoints are nonce-checked.
+
+## The whitelist
+
+A whitelisted address is never blocked, even when it matches a block. That is what
+makes a wide block usable: block `203.0.113.` and whitelist `203.0.113.40`, and the
+range is closed apart from the one address you need in.
+
+Entries are written and matched exactly as blocks are — a full address or the leading
+part of one — so everything under **Blocking a range** applies to them too.
+
+The whitelist is only consulted **after** a block has already matched, so an ordinary
+visitor never pays for it. That is also why `last_allowed` and `allow_count` move only
+when an entry has actually kept somebody in; an entry that has never been needed shows
+as *Never used*, which is the quiet, correct state rather than a warning. A whitelisted
+request writes nothing to the logs, because it was never blocked.
 
 ## Blocking a range
 
