@@ -12,7 +12,7 @@
      *  Requires at least: 6.4
      *  Requires PHP: 8.1
      *  Text Domain: fuseip
-     *  Fuse Update Server: http://fusecms.org
+     *  Fuse Update Server: https://fusecms.org
      */
     
     namespace Fuse\Plugin\IpBlocker;
