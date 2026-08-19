@@ -17,6 +17,14 @@
         
         
         /**
+         *  @var string The nonce action guarding the AJAX endpoints.
+         */
+        const NONCE_ACTION = 'fuse-ipblocker';
+        
+        
+        
+        
+        /**
          *  Set up our plugin
          */
         protected function _init () {
@@ -61,6 +69,8 @@
             <script type="text/javascript">
                 
                 jQuery (document).ready (function () {
+                    var fuseIpBlockNonce = '<?php echo esc_js (wp_create_nonce (self::NONCE_ACTION)); ?>';
+                    
                     // Delete a blocked IP
                     jQuery ('#fuse-ipblocker-list-table-container').on ('click', '.delete-ip', function (e) {
                         e.preventDefault ();
@@ -74,6 +84,7 @@
                             url: ajaxurl,
                             data: {
                                 action: 'fuse_ipblock_delete',
+                                nonce: fuseIpBlockNonce,
                                 ip: btn.data ('ip')
                             },
                             method: 'post',
@@ -106,6 +117,7 @@
                             url: ajaxurl,
                             data: {
                                 action: 'fuse_ipblock_add',
+                                nonce: fuseIpBlockNonce,
                                 ip: field.val ()
                             },
                             method: 'post',
@@ -145,9 +157,16 @@
                 'message' => __ ('An unknown error has occured', 'fuseip')
             );
             
-            $ip = array_key_exists ('ip', $_POST) ? $_POST ['ip'] : '';
+            if ($this->_checkRequest () === false) {
+                wp_send_json (array (
+                    'success' => false,
+                    'message' => __ ('You are not allowed to do that.', 'fuseip')
+                ));
+            } // if ()
             
-            if (strlen ($ip) > 1) {
+            $ip = $this->_validateIpBlock (array_key_exists ('ip', $_POST) ? wp_unslash ($_POST ['ip']) : '');
+            
+            if ($ip !== false) {
                 $query = $wpdb->prepare ("SELECT
                     ip
                 FROM ".$wpdb->prefix."fuseip_blocks
@@ -177,11 +196,10 @@
                 } // else
             } // if ()
             else {
-                $response ['message'] = __ ('An invalid IP address has been entered.', 'fuseip');
+                $response ['message'] = $this->_invalidIpMessage ();
             } // else
             
-            echo json_encode ($response);
-            die ();
+            wp_send_json ($response);
         } // addIpBlock ()
         
         /**
@@ -195,7 +213,14 @@
                 'message' => __ ('An unknown error has occured', 'fuseip')
             );
             
-            $ip = array_key_exists ('ip', $_POST) ? $_POST ['ip'] : '';
+            if ($this->_checkRequest () === false) {
+                wp_send_json (array (
+                    'success' => false,
+                    'message' => __ ('You are not allowed to do that.', 'fuseip')
+                ));
+            } // if ()
+            
+            $ip = array_key_exists ('ip', $_POST) ? sanitize_text_field (wp_unslash ($_POST ['ip'])) : '';
             
             if (strlen ($ip) > 1) {
                 $query = $wpdb->prepare ("SELECT
@@ -226,11 +251,10 @@
                 } // else
             } // if ()
             else {
-                $response ['message'] = __ ('An invalid IP address has bene entered.', 'fuseip');
+                $response ['message'] = __ ('An invalid IP address has been entered.', 'fuseip');
             } // else
             
-            echo json_encode ($response);
-            die ();
+            wp_send_json ($response);
         } // deleteIpBlock ()
         
         
@@ -285,11 +309,11 @@
         protected function _showLogsPage () {
             global $wpdb;
             
-            $ip = array_key_exists ('ip', $_GET) ? $_GET ['ip'] : '';
+            $ip = array_key_exists ('ip', $_GET) ? sanitize_text_field (wp_unslash ($_GET ['ip'])) : '';
             ?>
                 <?php if (strlen ($ip) > 0): ?>
                 
-                    <h1><?php printf (__ ('Blocked IP Logs for %s', 'fuseip'), $ip); ?></h1>
+                    <h1><?php printf (__ ('Blocked IP Logs for %s', 'fuseip'), esc_html ($ip)); ?></h1>
                 
                     <?php
                         $query = $wpdb->prepare ("SELECT
@@ -321,9 +345,9 @@
                                 <?php foreach ($results as $row): ?>
                                 
                                     <tr>
-                                        <td><?php echo $row->remote_ip; ?></td>
-                                        <td><?php echo date ('g:i:sa j/n/Y', strtotime ($row->hit_time)); ?></td>
-                                        <td><?php echo $row->hit_url; ?></td>
+                                        <td><?php echo esc_html ($row->remote_ip); ?></td>
+                                        <td><?php echo esc_html (date ('g:i:sa j/n/Y', strtotime ($row->hit_time))); ?></td>
+                                        <td><?php echo esc_html ($row->hit_url); ?></td>
                                     </tr>
                                 
                                 <?php endforeach; ?>
@@ -347,6 +371,185 @@
                 <?php endif; ?>
             <?php
         } // showLogsPage ()
+        
+        
+        
+        
+        /**
+         *  Check that this request is allowed to change the block list.
+         *
+         *  Both AJAX endpoints previously ran for any logged-in user with no
+         *  nonce at all, so a subscriber could block or unblock any address --
+         *  including the address of whoever was trying to administer the site.
+         *
+         *  @return bool True when the request may proceed.
+         */
+        protected function _checkRequest () {
+            if (current_user_can ('manage_options') === false) {
+                return false;
+            } // if ()
+            
+            return check_ajax_referer (self::NONCE_ACTION, 'nonce', false) !== false;
+        } // _checkRequest ()
+        
+        
+        
+        
+        /**
+         *  Validate an IP address or partial address for the block list.
+         *
+         *  A block is matched as a plain left-hand string prefix against the
+         *  visitor's address, so this accepts either a complete address or the
+         *  leading part of one:
+         *
+         *      192.0.2.1       a single IPv4 address
+         *      192.0.0.        everything from 192.0.0.0 to 192.0.0.255
+         *      192.0.          everything from 192.0.0.0 to 192.0.255.255
+         *      2001:db8:...    a single IPv6 address
+         *      2001:db8:       everything under that prefix
+         *
+         *  A partial address must end at a separator -- a dot for IPv4, a colon
+         *  for IPv6. That is what keeps the match on a boundary: without the
+         *  trailing dot, '192.0.1' would also match 192.0.10.x and 192.0.199.x.
+         *
+         *  @param string $ip The value entered.
+         *
+         *  @return string|false The value to store, or false if it is not
+         *  usable.
+         */
+        protected function _validateIpBlock ($ip) {
+            if (is_string ($ip) === false) {
+                return false;
+            } // if ()
+            
+            $ip = trim ($ip);
+            
+            if ($ip === '') {
+                return false;
+            } // if ()
+            
+            // Only an IPv6 address carries a colon.
+            if (strpos ($ip, ':') !== false) {
+                return $this->_validateIpv6Block ($ip);
+            } // if ()
+            
+            return $this->_validateIpv4Block ($ip);
+        } // _validateIpBlock ()
+        
+        /**
+         *  Validate a complete or partial IPv4 address.
+         *
+         *  @param string $ip The value entered.
+         *
+         *  @return string|false The value to store, or false.
+         */
+        protected function _validateIpv4Block ($ip) {
+            // A complete address.
+            if (filter_var ($ip, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4) !== false) {
+                return $ip;
+            } // if ()
+            
+            // A partial address has to stop at an octet boundary.
+            if (substr ($ip, -1) !== '.') {
+                return false;
+            } // if ()
+            
+            $octets = explode ('.', rtrim ($ip, '.'));
+            
+            // One to three octets; four of them would be a complete address.
+            if (count ($octets) < 1 || count ($octets) > 3) {
+                return false;
+            } // if ()
+            
+            foreach ($octets as $octet) {
+                /**
+                 *  No leading zeros -- '010' and '10' would be stored as
+                 *  different blocks but mean the same octet, and only one of
+                 *  them could ever match.
+                 */
+                if (preg_match ('/^(0|[1-9][0-9]{0,2})$/', $octet) !== 1) {
+                    return false;
+                } // if ()
+                
+                if (intval ($octet) > 255) {
+                    return false;
+                } // if ()
+            } // foreach ()
+            
+            return $ip;
+        } // _validateIpv4Block ()
+        
+        /**
+         *  Validate a complete or partial IPv6 address.
+         *
+         *  @param string $ip The value entered.
+         *
+         *  @return string|false The value to store, or false.
+         */
+        protected function _validateIpv6Block ($ip) {
+            $ip = strtolower ($ip);
+            
+            /**
+             *  Something like '2001:db8::' is a valid address in its own right,
+             *  but nobody types it meaning that -- they mean the range. Stored
+             *  as-is it would never match 2001:db8:85a3::1, because the block
+             *  is compared as text. Reject it and let the message point at the
+             *  form that does work, '2001:db8:'.
+             */
+            if (substr ($ip, -2) === '::') {
+                return false;
+            } // if ()
+            
+            // A complete address.
+            if (filter_var ($ip, FILTER_VALIDATE_IP, FILTER_FLAG_IPV6) !== false) {
+                /**
+                 *  Store it the way PHP reports an address in REMOTE_ADDR. An
+                 *  IPv6 address can be written several ways, and the block is
+                 *  compared as text -- so the fully expanded form a person is
+                 *  most likely to paste would otherwise never match.
+                 */
+                $packed = inet_pton ($ip);
+                
+                if ($packed !== false) {
+                    return inet_ntop ($packed);
+                } // if ()
+                
+                return $ip;
+            } // if ()
+            
+            /**
+             *  A partial address has to stop at a group boundary, and cannot
+             *  use '::' compression: the stored value is compared as text, so a
+             *  compressed prefix would never line up against a real address.
+             */
+            if (substr ($ip, -1) !== ':' || strpos ($ip, '::') !== false) {
+                return false;
+            } // if ()
+            
+            $groups = explode (':', rtrim ($ip, ':'));
+            
+            // One to seven groups; eight would be a complete address.
+            if (count ($groups) < 1 || count ($groups) > 7) {
+                return false;
+            } // if ()
+            
+            foreach ($groups as $group) {
+                if (preg_match ('/^[0-9a-f]{1,4}$/', $group) !== 1) {
+                    return false;
+                } // if ()
+            } // foreach ()
+            
+            return $ip;
+        } // _validateIpv6Block ()
+        
+        /**
+         *  The message shown when an entered address cannot be used.
+         *
+         *  @return string The message.
+         */
+        protected function _invalidIpMessage () {
+            return __ ('That is not a usable IP address or range. Enter a full address, or the start of one ending at a separator -- 192.0.0. for IPv4, or 2001:db8: for IPv6. An IPv6 range cannot use :: shorthand.', 'fuseip');
+        } // _invalidIpMessage ()
         
         
         
@@ -393,7 +596,7 @@
                                 <tr>
                                     <td>
                                         <a href="<?php echo esc_url (admin_url ('admin.php?page=ipblocker&section=logs&ip='.urlencode ($row->ip))); ?>">
-                                            <?php echo $row->ip; ?>
+                                            <?php echo esc_html ($row->ip); ?>
                                         </a>
                                     </td>
                                     <td>
@@ -433,13 +636,13 @@
                                                     $cls = 'admin-bold';
                                                 } // else
                                                 
-                                                echo '<span class="'.$cls.'">'.date ('g:i:sa j/n/Y', strtotime ($row->last_blocked)).'</span>';
+                                                echo '<span class="'.esc_attr ($cls).'">'.esc_html (date ('g:i:sa j/n/Y', strtotime ($row->last_blocked))).'</span>';
                                             } // else
                                         ?>
                                     </td>
-                                    <td><?php echo $row->block_count; ?></td>
+                                    <td><?php echo intval ($row->block_count); ?></td>
                                     <td style="width: 20px;">
-                                        <a href="#" class="delete-ip admin-red" data-ip="<?php esc_attr_e ($row->ip); ?>">
+                                        <a href="#" class="delete-ip admin-red" data-ip="<?php echo esc_attr ($row->ip); ?>">
                                             <span class="dashicons dashicons-dismiss"></span>
                                         </a>
                                     </td>

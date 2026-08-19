@@ -80,6 +80,11 @@
     
         // Only check if the database table exists
         if (count ($result) == 1) {
+            // Nothing to check against on CLI or a malformed request.
+            if (array_key_exists ('REMOTE_ADDR', $_SERVER) === false) {
+                return;
+            } // if ()
+            
             $ip = $_SERVER ['REMOTE_ADDR'];
             
             $query = $wpdb->prepare ("SELECT
@@ -102,10 +107,18 @@
                 
                 $wpdb->query ($query);
                 
+                /**
+                 *  The requested URL is attacker-controlled and gets rendered
+                 *  back on the logs screen, so it is cleaned on the way in as
+                 *  well as on the way out.
+                 */
+                $hit_url = array_key_exists ('REQUEST_URI', $_SERVER) ? $_SERVER ['REQUEST_URI'] : '';
+                $hit_url = esc_url_raw (wp_unslash ($hit_url));
+                
                 $wpdb->insert ($wpdb->prefix.'fuseip_logs', array (
                     'ip' => $db_ip,
                     'hit_time' => current_time ('mysql'),
-                    'hit_url' => $_SERVER ['REQUEST_URI'],
+                    'hit_url' => $hit_url,
                     'remote_ip' => $ip
                 ), array (
                     '%s',
@@ -113,9 +126,18 @@
                     '%s',
                     '%s'
                 ));
-
-                echo get_option ('fuse_ipblocker_blockmessage', __ ('You are not allows to access this resource', 'fuseip'));
-                header ('HTTP/1.1 403 Forbidden');
+                
+                /**
+                 *  The status has to go out before the message. Sending it
+                 *  afterwards meant the header was never applied and a blocked
+                 *  visitor was answered with a 200.
+                 */
+                if (headers_sent () === false) {
+                    status_header (403);
+                    nocache_headers ();
+                } // if ()
+                
+                echo wp_kses_post (get_option ('fuse_ipblocker_blockmessage', __ ('You are not allowed to access this resource', 'fuseip')));
                 
                 die ();
             } // if ()
